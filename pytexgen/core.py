@@ -10,11 +10,11 @@ from typing import Union, Optional, Any, Collection, Iterable, TypeVar
 from nbdev.export import nb_export
 
 # %% auto 0
-__all__ = ['TNS', 'to_node', 'TexBase', 'TexNode', 'TexAtom', 'TexSequence', 'TexPow', 'TexProd', 'TexFrac', 'TexColored',
-           'jointex', 'TexEnvironment', 'TexList', 'TexAlign', 'TexParen', 'Prob', 'TexMatrix', 'multiply_matrices',
-           'TexRoot']
+__all__ = ['TNS', 'to_node', 'TexBase', 'TexNode', 'TexAtom', 'TexSequence', 'TexPow', 'TexMul', 'TexFrac', 'TexColored',
+           'TexParen', 'TexAdd', 'jointex', 'TexEnvironment', 'TexList', 'TexAlign', 'Prob', 'TexMatrix',
+           'multiply_matrices', 'TexRoot']
 
-# %% ../latex_gen.ipynb 4
+# %% ../latex_gen.ipynb 5
 def to_node(x: TNS) -> TexNode:
     """
     Converts a raw string to a TexAtom
@@ -30,6 +30,7 @@ class TexBase:
     def tex(self) -> str:
         raise NotImplementedError("Children should implement this")
 
+
     def display(self) -> None:
         display(Markdown("$$" + self.tex + "$$"))
 
@@ -38,10 +39,13 @@ class TexNode(TexBase):
     # TODO parenthesize objects as needed.
     # Maybe by having that as a property of each object
     # and making a tex_p property that adds parens if needed
-    
+    def __init__(self, need_paren: bool=False) -> None:
+        super().__init__()
+        self.need_paren = need_paren
+
     # Use self + other
-    def __add__(self, other: TexNode) -> TexSequence:
-        return TexSequence((self, to_node(other)))
+    def __add__(self, other: TexNode) -> TexAdd:
+        return TexAdd([self, other])
 
     # Use self ** other
     def __pow__(self, other: TexNode) -> TexPow:
@@ -52,27 +56,45 @@ class TexNode(TexBase):
         return TexFrac(self, other)
 
 
-    def __mul__(self, other: TexNode) -> TexFrac:
-        return TexProd(self, other)
+    def __mul__(self, other: TexNode) -> TexMul:
+        return TexMul([self, other])
+
+    def __rshift__(self, other: TNS) -> TexSequence:
+        return TexSequence((self, other))
+
+    @property
+    def texp(self) -> str:
+        """
+        Wraps tex with parens, if needed
+        Call this when you may want to parenthesize this
+        eg when taking a product
+        """
+        if self.need_paren:
+            return TexParen(self).tex
+        else:
+            return self.tex
+            
+TNS = TypeVar("TNS", bound=str|TexNode)
+
     
 class TexAtom(TexNode):
     s: str
-    def __init__(self, s: str) -> None:
-        super().__init__()
+    def __init__(self, s: str, need_paren: bool = False) -> None:
+        super().__init__(need_paren=need_paren)
         self.s = s
-    
+
     @property
     def tex(self) -> str:
         return self.s
 
 
-TNS = TypeVar("TNS", bound=str|TexNode)
 
 class TexSequence(TexNode):
     children: tuple[TexNode, ...]
     def __init__(self, children: Collection[TexNode]) -> None:
-        super().__init__()
-        self.children = tuple(children)
+        need_paren = len(children) > 1
+        super().__init__(need_paren=need_paren)
+        self.children =  tuple([to_node(c) for c in children])
     
     @property
     def tex(self) -> str:
@@ -90,14 +112,16 @@ class TexPow(TexNode):
     def tex(self) -> str:
         return self.base.tex + "^{" + self.exp.tex + "}"
 
-class TexProd(TexNode):
-    def __init__(self, l: TNS, r: TNS) -> None:
-        super().__init__()
-        self.l, self.r = to_node(l), to_node(r)
-
+class TexMul(TexNode):
+    def __init__(self, children: Collection[TNS], prod_symbol: str = "\\cdot") -> None:
+        super().__init__(need_paren=False)
+        self.children = tuple([to_node(c) for c in children])
+        self.prod_symbol = prod_symbol
+    
     @property
     def tex(self) -> str:
-        return self.l.tex + " \\cdot " + self.r.tex
+        sep = " " + self.prod_symbol + " "
+        return sep.join([c.texp for c in self.children])
 
 class TexFrac(TexNode):
     def __init__(self, num: TNS, den: TNS) -> None:
@@ -123,7 +147,27 @@ class TexColored(TexNode):
         return "{\\color{" + self.color + "}" + self.child.tex + "}"
     
 
-# %% ../latex_gen.ipynb 5
+class TexParen(TexNode):
+    def __init__(self, child: TNS) -> None:
+        super().__init__()
+        self.child = to_node(child)
+        
+    @property
+    def tex(self) -> str:
+        return "\\left( " + self.child.tex + " \\right)"
+
+
+class TexAdd(TexNode):
+    def __init__(self, children: Collection[TNS]) -> None:
+        need_paren = len(children) > 1
+        super().__init__(need_paren=need_paren)
+        self.children = tuple([to_node(c) for c in children])
+    
+    @property
+    def tex(self) -> str:
+        return " + ".join([c.tex for c in self.children])
+
+# %% ../latex_gen.ipynb 6
 def jointex(sep: str,  children: Collection[TexNode]) -> TexAtom:
     s = ""
     for i, c in enumerate(children):
@@ -132,7 +176,7 @@ def jointex(sep: str,  children: Collection[TexNode]) -> TexAtom:
             s += sep
     return TexAtom(s)
 
-# %% ../latex_gen.ipynb 6
+# %% ../latex_gen.ipynb 7
 class TexEnvironment(TexBase):
     def __init__(self, nm: str) -> None:
         super().__init__()
@@ -165,16 +209,9 @@ class TexAlign(TexList):
         super().__init__("align", children)
 
 
-class TexParen(TexNode):
-    def __init__(self, child: TNS) -> None:
-        super().__init__()
-        self.child = to_node(child)
-        
-    @property
-    def tex(self) -> str:
-        return "\\left( " + self.child.tex + " \\right)"
 
-# %% ../latex_gen.ipynb 12
+
+# %% ../latex_gen.ipynb 13
 class Prob(TexNode):
     cond: Optional[TexNode]
     def __init__(self, event: Union[str, TexNode], cond: Optional[Union[str, TexNode]] = None) -> None:
@@ -193,7 +230,7 @@ class Prob(TexNode):
         s +=  " \\right)"
         return s
 
-# %% ../latex_gen.ipynb 15
+# %% ../latex_gen.ipynb 16
 class TexMatrix(TexNode):
     def __init__(self, els: Collection[Collection[TNS]]) -> None:
         super().__init__()
@@ -232,7 +269,7 @@ def multiply_matrices(m0: TexMatrix, m1: TexMatrix) -> TexMatrix:
     m_out = TexMatrix(els_out)
     return m_out
 
-# %% ../latex_gen.ipynb 18
+# %% ../latex_gen.ipynb 19
 class TexRoot(TexNode):
     def __init__(self, child: TNS, power: Optional[TNS] = None) -> None:
         super().__init__()
