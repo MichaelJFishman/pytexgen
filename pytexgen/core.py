@@ -10,8 +10,9 @@ from typing import Union, Optional, Any, Collection, Iterable, TypeVar
 from nbdev.export import nb_export
 
 # %% auto 0
-__all__ = ['TNS', 'to_node', 'TexBase', 'TexNode', 'TexAtom', 'TexSequence', 'TexPow', 'TexFrac', 'TexColored', 'jointex',
-           'TexEnvironment', 'TexList', 'TexAlign', 'Prob', 'TexMatrix', 'TexRoot']
+__all__ = ['TNS', 'to_node', 'TexBase', 'TexNode', 'TexAtom', 'TexSequence', 'TexPow', 'TexProd', 'TexFrac', 'TexColored',
+           'jointex', 'TexEnvironment', 'TexList', 'TexAlign', 'TexParen', 'Prob', 'TexMatrix', 'multiply_matrices',
+           'TexRoot']
 
 # %% ../latex_gen.ipynb 4
 def to_node(x: TNS) -> TexNode:
@@ -34,7 +35,10 @@ class TexBase:
 
 class TexNode(TexBase):
     # Methods to mimic arithmetic
-
+    # TODO parenthesize objects as needed.
+    # Maybe by having that as a property of each object
+    # and making a tex_p property that adds parens if needed
+    
     # Use self + other
     def __add__(self, other: TexNode) -> TexSequence:
         return TexSequence((self, to_node(other)))
@@ -47,6 +51,9 @@ class TexNode(TexBase):
     def __truediv__(self, other: TexNode) -> TexFrac:
         return TexFrac(self, other)
 
+
+    def __mul__(self, other: TexNode) -> TexFrac:
+        return TexProd(self, other)
     
 class TexAtom(TexNode):
     s: str
@@ -82,6 +89,15 @@ class TexPow(TexNode):
     @property
     def tex(self) -> str:
         return self.base.tex + "^{" + self.exp.tex + "}"
+
+class TexProd(TexNode):
+    def __init__(self, l: TNS, r: TNS) -> None:
+        super().__init__()
+        self.l, self.r = to_node(l), to_node(r)
+
+    @property
+    def tex(self) -> str:
+        return self.l.tex + " \\cdot " + self.r.tex
 
 class TexFrac(TexNode):
     def __init__(self, num: TNS, den: TNS) -> None:
@@ -149,7 +165,16 @@ class TexAlign(TexList):
         super().__init__("align", children)
 
 
-# %% ../latex_gen.ipynb 11
+class TexParen(TexNode):
+    def __init__(self, child: TNS) -> None:
+        super().__init__()
+        self.child = to_node(child)
+        
+    @property
+    def tex(self) -> str:
+        return "\\left( " + self.child.tex + " \\right)"
+
+# %% ../latex_gen.ipynb 12
 class Prob(TexNode):
     cond: Optional[TexNode]
     def __init__(self, event: Union[str, TexNode], cond: Optional[Union[str, TexNode]] = None) -> None:
@@ -168,7 +193,7 @@ class Prob(TexNode):
         s +=  " \\right)"
         return s
 
-# %% ../latex_gen.ipynb 14
+# %% ../latex_gen.ipynb 15
 class TexMatrix(TexNode):
     def __init__(self, els: Collection[Collection[TNS]]) -> None:
         super().__init__()
@@ -181,8 +206,33 @@ class TexMatrix(TexNode):
         s += s_content.tex
         s += "\n\\end{bmatrix}"
         return s
+    @property
+    def n_rows(self) -> int:
+        return len(self.els)
+    
+    @property
+    def n_cols(self) -> int:
+        return len(self.els[0])
 
-# %% ../latex_gen.ipynb 16
+def multiply_matrices(m0: TexMatrix, m1: TexMatrix) -> TexMatrix:
+    # Check that this multiplication is defined
+    if m0.n_cols != m1.n_rows:
+        raise ValueError(f"When multiplying matrices A x B, A.n_cols must equal B.n_rows. {m0.n_cols} != {m1.n_rows}")
+    n_rows = m0.n_rows
+    n_cols = m1.n_cols
+    els_out = [[None for _ in range(n_cols)] for _ in range(n_rows)]
+    for r in range(n_rows):
+        for c in range(n_cols):
+            terms = []
+            for r2 in range(m1.n_rows):
+                for c2 in range(m0.n_cols):
+                    terms.append(m0.els[r][c2] * m1.els[r2][c])
+            node = jointex(" + ", terms)
+            els_out[r][c] = node
+    m_out = TexMatrix(els_out)
+    return m_out
+
+# %% ../latex_gen.ipynb 18
 class TexRoot(TexNode):
     def __init__(self, child: TNS, power: Optional[TNS] = None) -> None:
         super().__init__()
