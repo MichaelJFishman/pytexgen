@@ -11,8 +11,8 @@ from nbdev.export import nb_export
 
 # %% auto 0
 __all__ = ['TNS', 'to_node', 'TexBase', 'TexNode', 'TexAtom', 'TexSequence', 'TexPow', 'TexMul', 'TexFrac', 'TexColored',
-           'TexParen', 'TexTuple', 'TexAdd', 'jointex', 'TexEq', 'Mathcal', 'TexEnvironment', 'TexList', 'TexAlign',
-           'Prob', 'TexMatrix', 'multiply_matrices', 'TexRoot']
+           'TexParen', 'TexTuple', 'TexAdd', 'jointex', 'TexEq', 'Mathcal', 'TexSub', 'TexEnvironment', 'TexList',
+           'TexAlign', 'Prob', 'TexMatrix', 'multiply_matrices', 'TexRoot']
 
 # %% ../latex_gen.ipynb 5
 def to_node(x: TNS) -> TexNode:
@@ -199,6 +199,17 @@ class Mathcal(TexNode):
     @property
     def tex(self) -> str:
         return "\\mathcal{" + self.child.tex + "}"
+
+
+class TexSub(TexNode):
+    def __init__(self, base: TNS, sub: TNS) -> None:
+        super().__init__()
+        self.base = to_node(base)
+        self.sub = to_node(sub)
+    
+    @property
+    def tex(self) -> str:
+        return self.base.texp + "_{" + self.sub.tex + "}"
         
 
 # %% ../latex_gen.ipynb 6
