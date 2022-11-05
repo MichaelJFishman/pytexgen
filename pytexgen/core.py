@@ -11,8 +11,8 @@ from nbdev.export import nb_export
 
 # %% auto 0
 __all__ = ['TNS', 'to_node', 'TexBase', 'TexNode', 'TexAtom', 'TexSequence', 'TexPow', 'TexMul', 'TexFrac', 'TexColored',
-           'TexParen', 'TexTuple', 'TexAdd', 'jointex', 'TexEnvironment', 'TexList', 'TexAlign', 'Prob', 'TexMatrix',
-           'multiply_matrices', 'TexRoot']
+           'TexParen', 'TexTuple', 'TexAdd', 'jointex', 'TexEq', 'Mathcal', 'TexEnvironment', 'TexList', 'TexAlign',
+           'Prob', 'TexMatrix', 'multiply_matrices', 'TexRoot']
 
 # %% ../latex_gen.ipynb 5
 def to_node(x: TNS) -> TexNode:
@@ -91,14 +91,15 @@ class TexAtom(TexNode):
 
 class TexSequence(TexNode):
     children: tuple[TexNode, ...]
-    def __init__(self, children: Collection[TexNode]) -> None:
+    def __init__(self, children: Collection[TexNode], sep: str = " ") -> None:
         need_paren = len(children) > 1
         super().__init__(need_paren=need_paren)
         self.children =  tuple([to_node(c) for c in children])
+        self.sep = sep
     
     @property
     def tex(self) -> str:
-        return " ".join([c.tex for c in self.children])
+        return self.sep.join([c.tex for c in self.children])
 
 class TexPow(TexNode):
     base: TexNode
@@ -186,11 +187,21 @@ def jointex(sep: str,  children: Collection[TexNode]) -> TexAtom:
             s += sep
     return TexAtom(s)
 
+
+class TexEq(TexSequence):
+    def __init__(self, children: Collection[TNS]) -> None:
+        super().__init__(children, " = ")
+
+class Mathcal(TexNode):
+    def __init__(self, child: TNS) -> None:
+        self.child = to_node(child)
+        super().__init__(need_paren = self.child.need_paren)
+    @property
+    def tex(self) -> str:
+        return "\\mathcal{" + self.child.tex + "}"
+        
+
 # %% ../latex_gen.ipynb 6
-#|export
-
-
-# %% ../latex_gen.ipynb 7
 class TexEnvironment(TexBase):
     def __init__(self, nm: str) -> None:
         super().__init__()
@@ -225,7 +236,7 @@ class TexAlign(TexList):
 
 
 
-# %% ../latex_gen.ipynb 13
+# %% ../latex_gen.ipynb 12
 class Prob(TexNode):
     cond: Optional[TexNode]
     def __init__(self, event: Union[str, TexNode], cond: Optional[Union[str, TexNode]] = None) -> None:
@@ -244,7 +255,7 @@ class Prob(TexNode):
         s +=  " \\right)"
         return s
 
-# %% ../latex_gen.ipynb 16
+# %% ../latex_gen.ipynb 15
 class TexMatrix(TexNode):
     def __init__(self, els: Collection[Collection[TNS]]) -> None:
         super().__init__()
@@ -283,7 +294,7 @@ def multiply_matrices(m0: TexMatrix, m1: TexMatrix) -> TexMatrix:
     m_out = TexMatrix(els_out)
     return m_out
 
-# %% ../latex_gen.ipynb 19
+# %% ../latex_gen.ipynb 18
 class TexRoot(TexNode):
     def __init__(self, child: TNS, power: Optional[TNS] = None) -> None:
         super().__init__()
