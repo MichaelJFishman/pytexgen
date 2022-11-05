@@ -11,7 +11,7 @@ from nbdev.export import nb_export
 
 # %% auto 0
 __all__ = ['TNS', 'to_node', 'TexBase', 'TexNode', 'TexAtom', 'TexSequence', 'TexPow', 'TexMul', 'TexFrac', 'TexColored',
-           'TexParen', 'TexAdd', 'jointex', 'TexEnvironment', 'TexList', 'TexAlign', 'Prob', 'TexMatrix',
+           'TexParen', 'TexTuple', 'TexAdd', 'jointex', 'TexEnvironment', 'TexList', 'TexAlign', 'Prob', 'TexMatrix',
            'multiply_matrices', 'TexRoot']
 
 # %% ../latex_gen.ipynb 5
@@ -148,13 +148,24 @@ class TexColored(TexNode):
     
 
 class TexParen(TexNode):
-    def __init__(self, child: TNS) -> None:
+    def __init__(self, child: TNS, parens: tuple[str,str] = ("(", ")")) -> None:
         super().__init__()
+        self.parens = parens
         self.child = to_node(child)
         
     @property
     def tex(self) -> str:
-        return "\\left( " + self.child.tex + " \\right)"
+        return f"\\left{self.parens[0]} " + self.child.tex + f" \\right{self.parens[1]}"
+
+class TexTuple(TexNode):
+    def __init__(self, children: Collection[TNS], parens: tuple[str,str] = ("(", ")")) -> None:
+        super().__init__()
+        self.children = tuple([to_node(c) for c in children])
+        self.parens = parens
+    @property
+    def tex(self) -> str:
+        return TexParen(jointex(", ", self.children), self.parens).tex
+
 
 
 class TexAdd(TexNode):
@@ -167,7 +178,6 @@ class TexAdd(TexNode):
     def tex(self) -> str:
         return " + ".join([c.tex for c in self.children])
 
-# %% ../latex_gen.ipynb 6
 def jointex(sep: str,  children: Collection[TexNode]) -> TexAtom:
     s = ""
     for i, c in enumerate(children):
@@ -175,6 +185,10 @@ def jointex(sep: str,  children: Collection[TexNode]) -> TexAtom:
         if i < len(children) - 1:
             s += sep
     return TexAtom(s)
+
+# %% ../latex_gen.ipynb 6
+#|export
+
 
 # %% ../latex_gen.ipynb 7
 class TexEnvironment(TexBase):
