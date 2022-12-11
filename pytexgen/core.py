@@ -10,9 +10,10 @@ from typing import Union, Optional, Any, Collection, Iterable, TypeVar
 from nbdev.export import nb_export
 
 # %% auto 0
-__all__ = ['TNS', 'to_node', 'TexBase', 'TexNode', 'TexAtom', 'TexSequence', 'TexPow', 'TexMul', 'TexFrac', 'TexColored',
-           'TexParen', 'TexTuple', 'TexAdd', 'jointex', 'TexEq', 'Mathcal', 'TexSub', 'TexEnvironment', 'TexList',
-           'TexAlign', 'Prob', 'TexMatrix', 'multiply_matrices', 'TexRoot']
+__all__ = ['TNS', 'to_node', 'TexBase', 'TexNotMath', 'TexNode', 'TexAtom', 'TexText', 'TexSequence', 'TexPow', 'TexMul',
+           'TexFrac', 'TexColored', 'TexParen', 'TexTuple', 'TexAdd', 'jointex', 'TexEq', 'Mathcal', 'TexSub',
+           'TexSetQuant', 'TexD', 'wrap_tex_if_needed', 'TexTextConcat', 'TexEnvironment', 'TexEnvList', 'TexAlign',
+           'TexList', 'Prob', 'TexMatrix', 'multiply_matrices', 'TexRoot']
 
 # %% ../latex_gen.ipynb 5
 def to_node(x: TNS) -> TexNode:
@@ -33,6 +34,10 @@ class TexBase:
 
     def display(self) -> None:
         display(Markdown("$$" + self.tex + "$$"))
+
+
+class TexNotMath(TexBase):
+    pass
 
 class TexNode(TexBase):
     # Methods to mimic arithmetic
@@ -74,7 +79,7 @@ class TexNode(TexBase):
         else:
             return self.tex
             
-TNS = TypeVar("TNS", bound=str|TexNode)
+TNS = TypeVar("TNS", bound=Union[str,TexNode])
 
     
 class TexAtom(TexNode):
@@ -88,8 +93,21 @@ class TexAtom(TexNode):
         return self.s
 
 
+#| export
+class TexText(TexNode):
+    """\\text{not math}"""
+    def __init__(self, s: str, need_paren: bool = False) -> None:
+        super().__init__(need_paren)
+        self.s = s
+
+    @property
+    def tex(self) -> str:
+        return "\\text{" + str(self.s) + "}"
+
+
 
 class TexSequence(TexNode):
+    """Holds a tuple of children. Displays them with a space separation by default."""
     children: tuple[TexNode, ...]
     def __init__(self, children: Collection[TexNode], sep: str = " ") -> None:
         need_paren = len(children) > 1
@@ -149,6 +167,7 @@ class TexColored(TexNode):
     
 
 class TexParen(TexNode):
+    """Wraps parens around child"""
     def __init__(self, child: TNS, parens: tuple[str,str] = ("(", ")")) -> None:
         super().__init__()
         self.parens = parens
@@ -159,6 +178,7 @@ class TexParen(TexNode):
         return f"\\left{self.parens[0]} " + self.child.tex + f" \\right{self.parens[1]}"
 
 class TexTuple(TexNode):
+    """Holds a tuple, comma separated and with parens"""
     def __init__(self, children: Collection[TNS], parens: tuple[str,str] = ("(", ")")) -> None:
         super().__init__()
         self.children = tuple([to_node(c) for c in children])
@@ -170,6 +190,7 @@ class TexTuple(TexNode):
 
 
 class TexAdd(TexNode):
+    """a + b"""
     def __init__(self, children: Collection[TNS]) -> None:
         need_paren = len(children) > 1
         super().__init__(need_paren=need_paren)
@@ -189,6 +210,7 @@ def jointex(sep: str,  children: Collection[TexNode]) -> TexAtom:
 
 
 class TexEq(TexSequence):
+    """a = b"""
     def __init__(self, children: Collection[TNS]) -> None:
         super().__init__(children, " = ")
 
@@ -202,6 +224,7 @@ class Mathcal(TexNode):
 
 
 class TexSub(TexNode):
+    """Subscript"""
     def __init__(self, base: TNS, sub: TNS) -> None:
         super().__init__()
         self.base = to_node(base)
@@ -213,6 +236,58 @@ class TexSub(TexNode):
         
 
 # %% ../latex_gen.ipynb 6
+class TexSetQuant(TexParen):
+    """{x^2 | x \in X}"""
+    def __init__(self, left: TNS, filter: TNS) -> None:
+        seq = TexSequence([left, "\\mid", filter])
+        super().__init__(seq, parens=("\\{", "\\}"))
+
+
+# %% ../latex_gen.ipynb 8
+class TexD(TexBase):
+    """Wrapper to tell TexTexConcat to use display mode"""
+    def __init__(self, child: TNS) -> None:
+        super().__init__()
+        self.child = to_node(child)
+    
+    @property
+    def tex(self) -> str:
+        return self.child.tex
+    
+
+def wrap_tex_if_needed(x: TNS) -> str:
+    """
+    Wraps TexD in $$, TexNode in $, and returns strings unchanged.
+    """
+    if isinstance(x, TexD):
+        return "$$" + x.tex + "$$"
+    elif isinstance(x, TexNotMath):
+        return x.tex
+    elif isinstance(x, TexBase):
+        return "$" + x.tex + "$"
+    else:
+        return x
+
+
+class TexTextConcat(TexNotMath):
+    """
+    Holds tex and text and whatnot and concatenates it properly
+    """
+    def __init__(self, *args: list[Union[str, TexBase]]) -> None:
+        self.children = args
+    
+    def to_markdown(self) -> str:
+        pieces = [wrap_tex_if_needed(c) for c in self.children]
+        return "".join(pieces)
+
+    def display(self) -> None:
+        display(Markdown(self.to_markdown()))
+
+    @property
+    def tex(self) -> str:
+        return self.to_markdown()
+
+# %% ../latex_gen.ipynb 10
 class TexEnvironment(TexBase):
     def __init__(self, nm: str) -> None:
         super().__init__()
@@ -226,7 +301,7 @@ class TexEnvironment(TexBase):
     def end_tex(self) -> str:
         return "\\end{" + self.nm + "}"
 
-class TexList(TexEnvironment):
+class TexEnvList(TexEnvironment):
     # Should nm instead be a class-level attribute?
     def __init__(self,nm: str, children: Collection[TNS]) -> None:
         super().__init__(nm)
@@ -240,14 +315,34 @@ class TexList(TexEnvironment):
 
 
 # Should we have special consideration for alignment with & ?
-class TexAlign(TexList):
+class TexAlign(TexEnvList):
     def __init__(self, children: Collection[TNS]) -> None:
         super().__init__("align", children)
 
 
+class TexList(TexNotMath):
+    """BUG Katex doesn't have the itemize environment, so we use markdown for this :/"""
+    def __init__(self, children: Collection[TNS], numbered: bool = False) -> None:
+        self.children = children
+        self.numbered = numbered
 
+    @property
+    def list_starter(self) -> str:
+        if self.numbered:
+            return "1. "
+        else:
+            return "- "
 
-# %% ../latex_gen.ipynb 12
+    @property
+    def tex(self) -> str:
+        pieces = [self.list_starter + wrap_tex_if_needed(c) for c in self.children]
+        return "\n".join(pieces)
+
+    def display(self) -> None:
+        display(Markdown(self.tex))
+    
+
+# %% ../latex_gen.ipynb 17
 class Prob(TexNode):
     cond: Optional[TexNode]
     def __init__(self, event: Union[str, TexNode], cond: Optional[Union[str, TexNode]] = None) -> None:
@@ -266,7 +361,7 @@ class Prob(TexNode):
         s +=  " \\right)"
         return s
 
-# %% ../latex_gen.ipynb 15
+# %% ../latex_gen.ipynb 20
 class TexMatrix(TexNode):
     def __init__(self, els: Collection[Collection[TNS]]) -> None:
         super().__init__()
@@ -305,7 +400,7 @@ def multiply_matrices(m0: TexMatrix, m1: TexMatrix) -> TexMatrix:
     m_out = TexMatrix(els_out)
     return m_out
 
-# %% ../latex_gen.ipynb 18
+# %% ../latex_gen.ipynb 23
 class TexRoot(TexNode):
     def __init__(self, child: TNS, power: Optional[TNS] = None) -> None:
         super().__init__()
